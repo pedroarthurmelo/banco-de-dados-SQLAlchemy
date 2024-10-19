@@ -1,0 +1,109 @@
+import sys
+from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QLabel, QDialog, QGridLayout, QLineEdit, QComboBox, QTextEdit
+
+
+class MainMenu(QMainWindow)
+    def __init__(self)
+        super().__init__()
+        self.setWindowTitle('Gerenciamento de Dados')
+        self.setGeometry(100, 100, 400, 300)
+
+        layout = QVBoxLayout()
+
+        self.cliente_btn = QPushButton('Cliente')
+        self.cliente_btn.clicked.connect(self.cliente_menu)
+        layout.addWidget(self.cliente_btn)
+
+        self.apartamento_btn = QPushButton('Apartamento')
+        self.apartamento_btn.clicked.connect(self.apartamento_menu)
+        layout.addWidget(self.apartamento_btn)
+
+        self.apolice_btn = QPushButton('Apólice')
+        self.apolice_btn.clicked.connect(self.apolice_menu)
+        layout.addWidget(self.apolice_btn)
+
+        self.acidente_btn = QPushButton('Acidente')
+        self.acidente_btn.clicked.connect(self.acidente_menu)
+        layout.addWidget(self.acidente_btn)
+
+        container = QWidget()
+        container.setLayout(layout)
+        self.setCentralWidget(container)
+
+    def cliente_menu(self)
+        self.menu_dialog('Cliente')
+
+    def apartamento_menu(self)
+        self.menu_dialog('Apartamento')
+
+    def apolice_menu(self)
+        self.menu_dialog('Apólice')
+
+    def acidente_menu(self)
+        self.menu_dialog('Acidente')
+
+    def menu_dialog(self, tipo)
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f'Menu {tipo}')
+        layout = QVBoxLayout()
+
+        add_btn = QPushButton(f'Adicionar {tipo}')
+        read_btn = QPushButton(f'Ler {tipo}')
+        update_btn = QPushButton(f'Atualizar {tipo}')
+        delete_btn = QPushButton(f'Deletar {tipo}')
+
+        layout.addWidget(add_btn)
+        layout.addWidget(read_btn)
+        layout.addWidget(update_btn)
+        layout.addWidget(delete_btn)
+
+        # Conectando os botões com as funções
+        add_btn.clicked.connect(lambda self.form_dialog(tipo, 'Adicionar'))
+        read_btn.clicked.connect(lambda self.form_dialog(tipo, 'Ler'))
+        update_btn.clicked.connect(lambda self.form_dialog(tipo, 'Atualizar'))
+        delete_btn.clicked.connect(lambda self.form_dialog(tipo, 'Deletar'))
+
+        dialog.setLayout(layout)
+        dialog.exec_()
+
+    def form_dialog(self, tipo, operacao)
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f'{operacao} {tipo}')
+
+        layout = QGridLayout()
+
+        if operacao in ['Adicionar', 'Atualizar']
+            layout.addWidget(QLabel('ID'), 0, 0)
+            id_input = QLineEdit()
+            layout.addWidget(id_input, 0, 1)
+
+            layout.addWidget(QLabel(f'Nome do {tipo}'), 1, 0)
+            nome_input = QLineEdit()
+            layout.addWidget(nome_input, 1, 1)
+
+            layout.addWidget(QLabel('Outros dados'), 2, 0)
+            dados_input = QTextEdit()
+            layout.addWidget(dados_input, 2, 1)
+
+        elif operacao == 'Ler'
+            layout.addWidget(QLabel(f'ID do {tipo} para leitura'), 0, 0)
+            id_input = QLineEdit()
+            layout.addWidget(id_input, 0, 1)
+
+        elif operacao == 'Deletar'
+            layout.addWidget(QLabel(f'ID do {tipo} para deletar'), 0, 0)
+            id_input = QLineEdit()
+            layout.addWidget(id_input, 0, 1)
+
+        submit_btn = QPushButton(f'{operacao} {tipo}')
+        layout.addWidget(submit_btn, 3, 0, 1, 2)
+
+        dialog.setLayout(layout)
+        dialog.exec_()
+
+
+if __name__ == '__main__'
+    app = QApplication(sys.argv)
+    window = MainMenu()
+    window.show()
+    sys.exit(app.exec_())
