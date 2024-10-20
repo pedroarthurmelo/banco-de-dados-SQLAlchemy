@@ -299,7 +299,7 @@ class MainMenu(QMainWindow):
         elif tipo == 'Apólice':
             campos = ['Data do Contrato (DD-MM-YYYY)', 'Contato', 'Assinatura']
         elif tipo == 'Apartamento':
-            campos = ['Endereço', 'Andar', 'Tipo de Apartamento(Padrão,Kitnet,Cobertura,Duplex,Triplex,Flat)', 'Número do Apartamento']
+            campos = ['Endereço', 'Andar', 'Tipo de Apartamento (Padrão,Kitnet,Cobertura,Duplex,Triplex,Flat)', 'Número do Apartamento']
         elif tipo == 'Acidente':
             campos = ['Descrição', 'Data da Ocorrência (DD-MM-YYYY)', 'Valor do Acidente', 'Tipo de Acidente']
 
