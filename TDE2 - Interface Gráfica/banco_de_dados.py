@@ -415,4 +415,3 @@ deletar_acidente(sessao, acidente1.id)
 
 # Fechando a sessão
 sessao.close()
-
