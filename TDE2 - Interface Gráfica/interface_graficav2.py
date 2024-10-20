@@ -34,7 +34,7 @@ sessao = Sessao()
 # Tabela Cliente
 class Cliente(Base):
     __tablename__ = 'cliente'
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, unique=True, nullable=False, autoincrement=True)
     cpf = Column(String(11), unique=True)
     nome = Column(String(50))
     endereco = Column(String(100))
@@ -48,7 +48,7 @@ class Cliente(Base):
 # Tabela Apólice
 class Apolice(Base):
     __tablename__ = 'apolice'
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, unique=True, nullable=False, autoincrement=True)
     fk_cliente = Column(Integer, ForeignKey('cliente.id'))
     data_contrato = Column(Date)
     contato = Column(String(50))
@@ -62,7 +62,7 @@ class Apolice(Base):
 # Tabela Apartamento
 class Apartamento(Base):
     __tablename__ = 'apartamento'
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, unique=True, nullable=False, autoincrement=True)
     endereco = Column(String(100))
     andar = Column(Integer)
     tipo_ap = Column(String(50))
@@ -77,7 +77,7 @@ class Apartamento(Base):
 # Tabela Acidente
 class Acidente(Base):
     __tablename__ = 'acidente'
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, unique=True, nullable=False, autoincrement=True)
     descricao = Column(String(200))
     data_ocorrencia = Column(Date)
     valor_acidente = Column(Float)
