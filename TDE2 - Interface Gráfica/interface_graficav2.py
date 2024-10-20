@@ -55,20 +55,6 @@ class Apolice(Base):
     def __repr__(self):
         return f"<Apolice(id={self.id}, data_contrato={self.data_contrato}, cliente_id={self.fk_cliente})>"
 
-# Tabela Acidente
-class Acidente(Base):
-    __tablename__ = 'acidente'
-    id = Column(Integer, primary_key=True)
-    descricao = Column(String(200))
-    data_ocorrencia = Column(Date)
-    valor_acidente = Column(Float)
-    tipo_acidente = Column(String(50))
-    fk_apartamento = Column(Integer, ForeignKey('apartamento.id'))
-    apartamento = relationship("Apartamento", back_populates="acidentes")
-
-    def __repr__(self):
-        return f"<Acidente(id={self.id}, descricao={self.descricao}, data_ocorrencia={self.data_ocorrencia}, apartamento_id={self.fk_apartamento})>"
-
 # Tabela Apartamento
 class Apartamento(Base):
     __tablename__ = 'apartamento'
@@ -83,6 +69,20 @@ class Apartamento(Base):
 
     def __repr__(self):
         return f"<Apartamento(id={self.id}, endereco={self.endereco}, numero_ap={self.numero_ap}, apolice_id={self.apolice_id})>"
+    
+# Tabela Acidente
+class Acidente(Base):
+    __tablename__ = 'acidente'
+    id = Column(Integer, primary_key=True)
+    descricao = Column(String(200))
+    data_ocorrencia = Column(Date)
+    valor_acidente = Column(Float)
+    tipo_acidente = Column(String(50))
+    fk_apartamento = Column(Integer, ForeignKey('apartamento.id'))
+    apartamento = relationship("Apartamento", back_populates="acidentes")
+
+    def __repr__(self):
+        return f"<Acidente(id={self.id}, descricao={self.descricao}, data_ocorrencia={self.data_ocorrencia}, apartamento_id={self.fk_apartamento})>"
 
 # Criando as tabelas no banco de dados (se já não existirem)
 Base.metadata.create_all(engine)
@@ -171,8 +171,8 @@ class MainMenu(QMainWindow):
             if tipo == 'Apartamento':
                 for registro in registros:
                     # Obter IDs dos acidentes relacionados ao apartamento
-                    acidente_ids = [acidente.id for acidente in registro.acidentes]
-                    list_widget.addItem(f"ID Apartamento: {registro.id} - IDs Acidentes: {acidente_ids}")
+                    acidente_id = [acidente.id for acidente in registro.acidentes]
+                    list_widget.addItem(f"ID Apartamento: {registro.id} - IDs Acidentes: {acidente_id}")
 
             elif tipo == 'Apólice':
                 for registro in registros:
@@ -180,19 +180,7 @@ class MainMenu(QMainWindow):
                     cliente_id = registro.cliente.id
                     list_widget.addItem(f"ID Apólice: {registro.id} - ID Cliente: {cliente_id}")
 
-            elif tipo == 'Acidente':
-                data_ocorrencia = datetime.strptime(inputs[1].text(), '%d-%m-%Y').date()
-                acidente = Acidente(
-                    descricao=inputs[0].text(),
-                    data_ocorrencia=data_ocorrencia,
-                    valor_acidente=float(inputs[2].text()),
-                    tipo_acidente=inputs[3].text(),
-                    fk_apartamento=int(apartamento_list.currentItem().text().split()[1])  # ID do apartamento selecionado
-                )
-                sessao.add(acidente)
-                sessao.commit()
-
-            else:
+            else:  # Para Cliente e Acidente, apenas liste os registros
                 for registro in registros:
                     list_widget.addItem(str(registro))
 
@@ -233,7 +221,8 @@ class MainMenu(QMainWindow):
             submit_btn.clicked.connect(lambda: self.adicionar_registro(
                 tipo, inputs, dialog, 
                 apolice_list if tipo == 'Apartamento' else None,
-                cliente_list if tipo == 'Apólice' else None
+                cliente_list if tipo == 'Apólice' else None,
+                apartamento_list if tipo == 'Acidente' else None
             ))
             layout.addWidget(submit_btn, len(campos) + 2, 0, 1, 2)
 
@@ -281,7 +270,7 @@ class MainMenu(QMainWindow):
 
         return campos, inputs
 
-    def adicionar_registro(self, tipo, inputs, dialog, apolice_list=None, cliente_list=None):
+    def adicionar_registro(self, tipo, inputs, dialog, apolice_list=None, cliente_list=None, apartamento_list=None):
         try:
             if tipo == 'Cliente':
                 cliente = Cliente(
@@ -320,7 +309,7 @@ class MainMenu(QMainWindow):
                     data_ocorrencia=data_ocorrencia,
                     valor_acidente=float(inputs[2].text()),
                     tipo_acidente=inputs[3].text(),
-                    fk_apartamento=int(inputs[4].text()) if len(inputs) > 4 else None  # ID do apartamento
+                    fk_apartamento=int(apartamento_list.currentItem().text().split()[1])  # ID do apartamento selecionado
                 )
                 sessao.add(acidente)
                 sessao.commit()
