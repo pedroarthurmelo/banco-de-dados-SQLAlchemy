@@ -2,12 +2,16 @@ import sys
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QVBoxLayout, 
     QWidget, QLabel, QDialog, QGridLayout, QLineEdit, 
-    QMessageBox, QTabWidget, QListWidget
+    QMessageBox, QTabWidget, QListWidget,
 )
+from PyQt5.QtCore import Qt
+from PyQt5 import QtGui, QtCore, QtWidgets
+from PyQt5.QtGui import QIcon
 import sqlalchemy
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy import Column, Integer, String, ForeignKey, Float, Date
 from sqlalchemy.orm import relationship
+from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 
 # Dados de conexão com o banco de dados
@@ -39,7 +43,7 @@ class Cliente(Base):
     apolices = relationship("Apolice", back_populates="cliente")
 
     def __repr__(self):
-        return f"<Cliente(id={self.id}, nome={self.nome}, cpf={self.cpf})>"
+        return f"<Cliente(id={self.id}, nome={self.nome}, cpf={self.cpf}, telefone={self.telefone}, email={self.email})>"
 
 # Tabela Apólice
 class Apolice(Base):
@@ -69,7 +73,7 @@ class Apartamento(Base):
 
     def __repr__(self):
         return f"<Apartamento(id={self.id}, endereco={self.endereco}, numero_ap={self.numero_ap}, apolice_id={self.apolice_id})>"
-    
+
 # Tabela Acidente
 class Acidente(Base):
     __tablename__ = 'acidente'
@@ -90,29 +94,30 @@ Base.metadata.create_all(engine)
 class MainMenu(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('Gerenciamento de Dados')
-        self.setGeometry(100, 100, 500, 400)
+        self.setWindowTitle('SGBD - Seguradora')
+        self.setGeometry(720, 250, 500, 500)
 
         # Estilo da janela
         self.setStyleSheet(""" 
             QMainWindow { 
-                background-color: #F0F0F0; 
+                background-color: #E6E6E6; 
             } 
             QPushButton { 
-                background-color: #4CAF50; 
+                background-color: #0056b3; 
                 color: white; 
                 font-size: 16px; 
                 border-radius: 5px; 
                 padding: 10px; 
             } 
             QPushButton:hover { 
-                background-color: #45a049; 
+                background-color: #0074e1; 
             } 
             QDialog { 
-                background-color: #FFF; 
+                background-color: #fdfeff; 
             } 
             QLabel { 
-                font-size: 14px; 
+                font-size: 14px;
+                color:#333333
             } 
             QLineEdit { 
                 padding: 5px; 
@@ -121,9 +126,40 @@ class MainMenu(QMainWindow):
             } 
         """)
 
-        # Criar o QTabWidget
+        # Estilo personalizado para as abas
         self.tabs = QTabWidget()
-        self.setCentralWidget(self.tabs)
+        self.tabs.setStyleSheet("""
+            QTabBar::tab {
+                background-color: #0ff;
+                padding: 10px;
+                border: 1px solid #ccc;
+                border-radius: 5px;
+                margin: 2px;
+            }
+            QTabBar::tab:selected {
+                background-color: #ffffff;
+                font-weight: alternate;
+            }
+            QTabWidget::pane {
+                border: 1px solid #000000;
+                padding: 10px
+            }
+            QTabBar::tab:hover {
+              background-color: #f0f0f0;    
+            }
+        """)
+
+        # Criar um QLabel para o título da seguradora
+        title_label = QLabel('Seguradora XYZ')  # Altere 'Seguradora XYZ' para o nome da sua seguradora
+        title_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #000000;")
+        title_label.setAlignment(Qt.AlignCenter)
+
+        # Criar um layout vertical e adicionar o QLabel ao layout
+        central_widget = QWidget()
+        layout = QVBoxLayout(central_widget)
+        layout.addWidget(title_label)  # Adiciona o título ao layout
+        layout.addWidget(self.tabs)  # Adiciona as abas ao layout
+        self.setCentralWidget(central_widget)
 
         # Adicionar as abas na ordem desejada: Cliente, Apólice, Apartamento, Acidente
         self.add_tab('Cliente', 'Cliente')
@@ -159,6 +195,8 @@ class MainMenu(QMainWindow):
         dialog = QDialog(self)
         dialog.setWindowTitle(f'{operacao} {tipo}')
 
+        dialog.resize(600, 600)
+
         layout = QGridLayout()
 
         if operacao == 'Ler':
@@ -180,7 +218,10 @@ class MainMenu(QMainWindow):
                     cliente_id = registro.cliente.id
                     list_widget.addItem(f"ID Apólice: {registro.id} - ID Cliente: {cliente_id}")
 
-            else:  # Para Cliente e Acidente, apenas liste os registros
+            elif tipo == 'Cliente':
+                for registro in registros:
+                    list_widget.addItem(f"ID: {registro.id} - Nome: {registro.nome} - Telefone: {registro.telefone} - Email: {registro.email}")
+            else:  # Para Acidente, apenas liste os registros
                 for registro in registros:
                     list_widget.addItem(str(registro))
 
@@ -258,7 +299,7 @@ class MainMenu(QMainWindow):
         elif tipo == 'Apólice':
             campos = ['Data do Contrato (DD-MM-YYYY)', 'Contato', 'Assinatura']
         elif tipo == 'Apartamento':
-            campos = ['Endereço', 'Andar', 'Tipo de Apartamento', 'Número do Apartamento']
+            campos = ['Endereço', 'Andar', 'Tipo de Apartamento(Padrão,Kitnet,Cobertura,Duplex,Triplex,Flat)', 'Número do Apartamento']
         elif tipo == 'Acidente':
             campos = ['Descrição', 'Data da Ocorrência (DD-MM-YYYY)', 'Valor do Acidente', 'Tipo de Acidente']
 
@@ -316,74 +357,129 @@ class MainMenu(QMainWindow):
 
             QMessageBox.information(dialog, 'Sucesso', f'{tipo} adicionado com sucesso!')
             dialog.accept()
+        except IntegrityError as ie:
+            sessao.rollback()
+            QMessageBox.warning(dialog, 'Erro de Integridade', f'Erro ao adicionar {tipo}: CPF duplicado ou outra violação de integridade.')
+            print(f"Erro de integridade: {ie}")
         except Exception as e:
+            sessao.rollback()
             QMessageBox.warning(dialog, 'Erro', f'Erro ao adicionar {tipo}: {e}')
+            print(f"Erro geral ao adicionar {tipo}: {e}")
 
     def atualizar_registro(self, tipo, inputs, id_list, dialog):
         try:
             selected_id = int(id_list.currentItem().text().split()[1])  # ID do item selecionado
             if tipo == 'Cliente':
                 cliente = sessao.query(Cliente).filter(Cliente.id == selected_id).first()
-                cliente.cpf = inputs[0].text()
-                cliente.nome = inputs[1].text()
-                cliente.endereco = inputs[2].text()
-                cliente.telefone = inputs[3].text()
-                cliente.email = inputs[4].text()
+                if cliente:
+                    cliente.cpf = inputs[0].text()
+                    cliente.nome = inputs[1].text()
+                    cliente.endereco = inputs[2].text()
+                    cliente.telefone = inputs[3].text()
+                    cliente.email = inputs[4].text()
+                else:
+                    QMessageBox.warning(dialog, 'Erro', 'Cliente não encontrado.')
+                    return
             elif tipo == 'Apólice':
                 apolice = sessao.query(Apolice).filter(Apolice.id == selected_id).first()
-                apolice.data_contrato = datetime.strptime(inputs[0].text(), '%d-%m-%Y').date()
-                apolice.contato = inputs[1].text()
-                apolice.assinatura = inputs[2].text()
+                if apolice:
+                    apolice.data_contrato = datetime.strptime(inputs[0].text(), '%d-%m-%Y').date()
+                    apolice.contato = inputs[1].text()
+                    apolice.assinatura = inputs[2].text()
+                else:
+                    QMessageBox.warning(dialog, 'Erro', 'Apólice não encontrada.')
+                    return
             elif tipo == 'Apartamento':
                 apartamento = sessao.query(Apartamento).filter(Apartamento.id == selected_id).first()
-                apartamento.endereco = inputs[0].text()
-                apartamento.andar = int(inputs[1].text())
-                apartamento.tipo_ap = inputs[2].text()
-                apartamento.numero_ap = int(inputs[3].text())
+                if apartamento:
+                    apartamento.endereco = inputs[0].text()
+                    apartamento.andar = int(inputs[1].text())
+                    apartamento.tipo_ap = inputs[2].text()
+                    apartamento.numero_ap = int(inputs[3].text())
+                else:
+                    QMessageBox.warning(dialog, 'Erro', 'Apartamento não encontrado.')
+                    return
             elif tipo == 'Acidente':
                 acidente = sessao.query(Acidente).filter(Acidente.id == selected_id).first()
-                acidente.descricao = inputs[0].text()
-                acidente.data_ocorrencia = datetime.strptime(inputs[1].text(), '%d-%m-%Y').date()
-                acidente.valor_acidente = float(inputs[2].text())
-                acidente.tipo_acidente = inputs[3].text()
+                if acidente:
+                    acidente.descricao = inputs[0].text()
+                    acidente.data_ocorrencia = datetime.strptime(inputs[1].text(), '%d-%m-%Y').date()
+                    acidente.valor_acidente = float(inputs[2].text())
+                    acidente.tipo_acidente = inputs[3].text()
+                else:
+                    QMessageBox.warning(dialog, 'Erro', 'Acidente não encontrado.')
+                    return
 
             sessao.commit()
             QMessageBox.information(dialog, 'Sucesso', f'{tipo} atualizado com sucesso!')
             dialog.accept()
+        except IntegrityError as ie:
+            sessao.rollback()
+            QMessageBox.warning(dialog, 'Erro de Integridade', f'Erro ao atualizar {tipo}: Violação de integridade.')
+            print(f"Erro de integridade ao atualizar {tipo}: {ie}")
         except Exception as e:
+            sessao.rollback()
             QMessageBox.warning(dialog, 'Erro', f'Erro ao atualizar {tipo}: {e}')
+            print(f"Erro geral ao atualizar {tipo}: {e}")
 
     def deletar_registro(self, tipo, id_list, dialog):
         try:
             selected_id = int(id_list.currentItem().text().split()[1])  # ID do item selecionado
             if tipo == 'Cliente':
                 cliente = sessao.query(Cliente).filter(Cliente.id == selected_id).first()
-                sessao.delete(cliente)
+                if cliente:
+                    sessao.delete(cliente)
+                else:
+                    QMessageBox.warning(dialog, 'Erro', 'Cliente não encontrado.')
+                    return
             elif tipo == 'Apólice':
                 apolice = sessao.query(Apolice).filter(Apolice.id == selected_id).first()
-                sessao.delete(apolice)
+                if apolice:
+                    sessao.delete(apolice)
+                else:
+                    QMessageBox.warning(dialog, 'Erro', 'Apólice não encontrada.')
+                    return
             elif tipo == 'Apartamento':
                 apartamento = sessao.query(Apartamento).filter(Apartamento.id == selected_id).first()
-                sessao.delete(apartamento)
+                if apartamento:
+                    sessao.delete(apartamento)
+                else:
+                    QMessageBox.warning(dialog, 'Erro', 'Apartamento não encontrado.')
+                    return
             elif tipo == 'Acidente':
                 acidente = sessao.query(Acidente).filter(Acidente.id == selected_id).first()
-                sessao.delete(acidente)
+                if acidente:
+                    sessao.delete(acidente)
+                else:
+                    QMessageBox.warning(dialog, 'Erro', 'Acidente não encontrado.')
+                    return
 
             sessao.commit()
             QMessageBox.information(dialog, 'Sucesso', f'{tipo} deletado com sucesso!')
             dialog.accept()
+        except IntegrityError as ie:
+            sessao.rollback()
+            QMessageBox.warning(dialog, 'Erro de Integridade', f'Erro ao deletar {tipo}: Violação de integridade referencial.')
+            print(f"Erro de integridade ao deletar {tipo}: {ie}")
         except Exception as e:
+            sessao.rollback()
             QMessageBox.warning(dialog, 'Erro', f'Erro ao deletar {tipo}: {e}')
+            print(f"Erro geral ao deletar {tipo}: {e}")
 
     def get_registros(self, tipo):
-        if tipo == 'Cliente':
-            return sessao.query(Cliente).all()
-        elif tipo == 'Apólice':
-            return sessao.query(Apolice).all()
-        elif tipo == 'Apartamento':
-            return sessao.query(Apartamento).all()
-        elif tipo == 'Acidente':
-            return sessao.query(Acidente).all()
+        try:
+            if tipo == 'Cliente':
+                return sessao.query(Cliente).all()
+            elif tipo == 'Apólice':
+                return sessao.query(Apolice).all()
+            elif tipo == 'Apartamento':
+                return sessao.query(Apartamento).all()
+            elif tipo == 'Acidente':
+                return sessao.query(Acidente).all()
+        except Exception as e:
+            QMessageBox.warning(self, 'Erro', f'Erro ao obter registros de {tipo}: {e}')
+            print(f"Erro ao obter registros de {tipo}: {e}")
+            return []
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
