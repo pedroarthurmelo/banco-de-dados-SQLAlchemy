@@ -150,7 +150,7 @@ class MainMenu(QMainWindow):
         """)
 
         # Criar um QLabel para o título da seguradora
-        title_label = QLabel('Seguradora XYZ')  # Altere 'Seguradora XYZ' para o nome da sua seguradora
+        title_label = QLabel('Seguradora')
         title_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #000000;")
         title_label.setAlignment(Qt.AlignCenter)
 
