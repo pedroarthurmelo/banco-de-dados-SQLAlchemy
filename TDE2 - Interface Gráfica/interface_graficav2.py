@@ -105,6 +105,8 @@ Base.metadata.create_all(engine)
 class LoginDialog(QDialog):
     def __init__(self):
         super().__init__()
+        self.username = None
+        self.role = None
         self.setWindowTitle("Login")
         layout = QGridLayout()
         self.register_dialog = None
@@ -136,6 +138,7 @@ class LoginDialog(QDialog):
 
         user = sessao.query(Usuario).filter_by(username=username).first()
         if user and bcrypt.checkpw(password.encode('utf-8'), user.password_hash.encode('utf-8')):
+            self.username = username
             self.role = user.role
             self.accept()
         else:
@@ -166,7 +169,7 @@ class RegistrationDialog(QDialog):
         self.confirm_password_input.setEchoMode(QLineEdit.Password)
         layout.addWidget(self.confirm_password_input, 2, 1)
 
-        layout.addWidget(QLabel("Role (root, client, admin):"), 3, 0)
+        layout.addWidget(QLabel("Role (FUNCIONÁRIO/CLIENTE):"), 3, 0)
         self.role_input = QLineEdit()
         layout.addWidget(self.role_input, 3, 1)
 
@@ -181,7 +184,10 @@ class RegistrationDialog(QDialog):
         username = self.username_input.text()
         password = self.password_input.text()
         confirm_password = self.confirm_password_input.text()
-        role = self.role_input.text()
+        role = self.role_input.text().upper()
+        if role not in ['FUNCIONÁRIO', 'CLIENTE']:
+            QMessageBox.warning(self, "Registration Error", "Role must be FUNCIONÁRIO or CLIENTE.")
+            return
         self.close()
         if self.parent():
             self.parent().show()
@@ -206,12 +212,19 @@ class RegistrationDialog(QDialog):
             QMessageBox.warning(self, "Registration Error", f"An error occurred: {e}")
 
 class MainMenu(QMainWindow):
-    def __init__(self):
+    def __init__(self, username=None, role=None):
         super().__init__()
         self.setWindowTitle('SGBD - Seguradora')
         self.setGeometry(720, 250, 500, 500)
+        self.username = username
+        self.role = role
 
-        # Estilo da janela
+        self.tabs = QTabWidget()
+        self.setCentralWidget(self.tabs)
+
+        self.initUI()
+    
+    def initUI(self):
         self.setStyleSheet(""" 
             QMainWindow { 
                 background-color: #E6E6E6; 
@@ -263,23 +276,106 @@ class MainMenu(QMainWindow):
             }
         """)
 
-        # Criar um QLabel para o título da seguradora
         title_label = QLabel('Seguradora')
         title_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #000000;")
         title_label.setAlignment(Qt.AlignCenter)
 
-        # Criar um layout vertical e adicionar o QLabel ao layout
         central_widget = QWidget()
         layout = QVBoxLayout(central_widget)
+
+        self.user_label = QLabel(f"Usuário Logado: {self.username}")
+        self.user_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #000000;")
+        layout.addWidget(self.user_label)
+
         layout.addWidget(title_label)  # Adiciona o título ao layout
         layout.addWidget(self.tabs)  # Adiciona as abas ao layout
         self.setCentralWidget(central_widget)
 
+        logout_btn = QPushButton("Logout")
+        logout_btn.clicked.connect(self.logout)
+        layout.addWidget(logout_btn)
+
+        if self.role != "CLIENTE":
         # Adicionar as abas na ordem desejada: Cliente, Apólice, Apartamento, Acidente
-        self.add_tab('Cliente', 'Cliente')
-        self.add_tab('Apólice', 'Apólice')
-        self.add_tab('Apartamento', 'Apartamento')
-        self.add_tab('Acidente', 'Acidente')
+            self.add_tab('Cliente', 'Cliente')
+            self.add_tab('Apólice', 'Apólice')
+            self.add_tab('Apartamento', 'Apartamento')
+            self.add_tab('Acidente', 'Acidente')
+
+        if self.role == 'CLIENTE':
+            self.customize_client_view()
+
+    def customize_client_view(self):
+    # Remove tabs or disable certain operations for CLIENTE
+        if self.tabs.count() > 0:
+         for i in range(self.tabs.count()):
+            tab = self.tabs.widget(i)
+            for btn in tab.findChildren(QPushButton):
+                btn.setEnabled(False)
+
+        self.add_client_specific_tabs()
+
+    def add_client_specific_tabs(self):
+            # Add a tab for personal data
+            personal_tab = QWidget()
+            personal_layout = QVBoxLayout()
+            
+            view_personal_btn = QPushButton('Consultar Dados Pessoais')
+            view_personal_btn.clicked.connect(self.view_personal_data)
+            personal_layout.addWidget(view_personal_btn)
+            
+            view_apolices_btn = QPushButton('Consultar Apólices')
+            view_apolices_btn.clicked.connect(lambda: self.form_dialog('Apólice', 'Ler'))
+            personal_layout.addWidget(view_apolices_btn)
+            
+            view_apartamentos_btn = QPushButton('Consultar Apartamentos')
+            view_apartamentos_btn.clicked.connect(lambda: self.form_dialog('Apartamento', 'Ler'))
+            personal_layout.addWidget(view_apartamentos_btn)
+            
+            view_acidentes_btn = QPushButton('Consultar Acidentes')
+            view_acidentes_btn.clicked.connect(lambda: self.form_dialog('Acidente', 'Ler'))
+            personal_layout.addWidget(view_acidentes_btn)
+            
+            personal_tab.setLayout(personal_layout)
+            self.tabs.addTab(personal_tab, 'Área do Cliente')
+
+    def view_personal_data(self):
+    # Retrieve and display personal data for the logged-in client
+        cliente = sessao.query(Cliente).filter_by(cpf=self.get_client_cpf()).first()
+        if cliente:
+            data = f"""
+            Dados Pessoais:
+            CPF: {cliente.cpf}
+            Nome: {cliente.nome}
+            Endereço: {cliente.endereco}
+            Telefone: {cliente.telefone}
+            Email: {cliente.email}
+            """
+            QMessageBox.information(self, 'Dados Pessoais', data)
+
+    def get_client_cpf(self):
+    # Retrieve CPF for the logged-in user
+        usuario = sessao.query(Usuario).filter_by(username=self.username).first()
+        if usuario:
+            cliente = sessao.query(Cliente).filter_by(cpf=usuario.username).first()
+            return cliente.cpf if cliente else None
+        return None
+    
+    def get_registros(self, tipo):
+        if self.role == 'CLIENTE':
+            cpf = self.get_client_cpf()
+            if tipo == 'Cliente':
+                return sessao.query(Cliente).filter(Cliente.cpf == cpf).all()
+            elif tipo == 'Apólice':
+                return sessao.query(Apolice).join(Cliente).filter(Cliente.cpf == cpf).all()
+            elif tipo == 'Apartamento':
+                return sessao.query(Apartamento).join(Apolice).join(Cliente).filter(Cliente.cpf == cpf).all()
+            elif tipo == 'Acidente':
+                return sessao.query(Acidente).join(Apartamento).join(Apolice).join(Cliente).filter(Cliente.cpf == cpf).all()
+        else:
+            # FUNCIONÁRIO gets full access
+            return super().get_registros(tipo)
+
 
     def add_tab(self, title, tipo):
         tab = QWidget()
@@ -714,7 +810,8 @@ class MainMenu(QMainWindow):
         self.close()
         login_dialog = LoginDialog()
         if login_dialog.exec_() == QDialog.Accepted:
-            main_window = MainMenu(login_dialog.username) # Pass the username back to MainMenu
+            main_window = MainMenu(login_dialog.username)
+            main_window.role = login_dialog.role if hasattr(login_dialog, 'role') else "root"
             main_window.show()
         
 
@@ -723,7 +820,7 @@ if __name__ == '__main__':
     login_dialog = LoginDialog()
     
     if login_dialog.exec_() == QDialog.Accepted:
-        main_window = MainMenu()
-        main_window.role = login_dialog.role if hasattr(login_dialog, 'role') else "root"
+        main_window = MainMenu(login_dialog.username, login_dialog.role)
+        main_window.role = login_dialog.role
         main_window.show()
     sys.exit(app.exec_())
