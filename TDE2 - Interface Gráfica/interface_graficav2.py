@@ -15,6 +15,16 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 
+def parse_data(data_str):
+    """Tenta converter uma string para uma data, aceitando múltiplos formatos."""
+    formatos = ['%d/%m/%Y', '%d-%m-%Y', '%d%m%Y']  # Formatos aceitos
+    for formato in formatos:
+        try:
+            return datetime.strptime(data_str, formato).date()
+        except ValueError:
+            continue
+    raise ValueError(f"Formato de data inválido: '{data_str}'. Use dd/mm/aaaa, dd-mm-aaaa ou ddmmaaaa.")
+
 # Dados de conexão com o banco de dados
 USUARIO = 'root'
 SENHA = ''
@@ -284,9 +294,7 @@ class RegistrationDialog(QDialog):
                 sessao.add(cliente)
             else:  # FUNCIONÁRIO
                 try:
-                    data_contratacao = datetime.strptime(
-                        self.funcionario_widgets[2][1].text(), '%d-%m-%Y'
-                    ).date()
+                    data_contratacao = parse_data(self.funcionario_widgets[2][1].text())
                     salario = float(self.funcionario_widgets[3][1].text())
                 except ValueError:
                     QMessageBox.warning(self, "Erro", "Data ou salário inválido.")
@@ -646,7 +654,7 @@ class MainMenu(QMainWindow):
                     QMessageBox.information(dialog, 'Sucesso', f'{tipo} adicionado com sucesso!')
                     dialog.accept()
                 elif tipo == 'Apólice':
-                    data_contrato = datetime.strptime(inputs[0].text(), '%d-%m-%Y').date()
+                    data_contrato = parse_data(inputs[0].text())
                     selected_cliente = cliente_list.currentItem()
                     if selected_cliente:
                         try:
@@ -726,7 +734,7 @@ class MainMenu(QMainWindow):
                             apartamento_id = int(id_parts[0].split('ID Apartamento:')[1].strip())
 
                             # Extrair a data de ocorrência
-                            data_ocorrencia = datetime.strptime(inputs[1].text(), '%d-%m-%Y').date()
+                            data_ocorrencia = parse_data(inputs[1].text())
                             
                             acidente = Acidente(
                                 descricao=inputs[0].text(),
@@ -777,7 +785,7 @@ class MainMenu(QMainWindow):
             elif tipo == 'Apólice':
                 apolice = sessao.query(Apolice).filter(Apolice.id == selected_id).first()
                 if apolice:
-                    apolice.data_contrato = datetime.strptime(inputs[0].text(), '%d-%m-%Y').date()
+                    apolice.data_contrato = parse_data(inputs[0].text())
                     apolice.contato = inputs[1].text()
                     apolice.assinatura = inputs[2].text()
                 else:
@@ -797,7 +805,7 @@ class MainMenu(QMainWindow):
                 acidente = sessao.query(Acidente).filter(Acidente.id == selected_id).first()
                 if acidente:
                     acidente.descricao = inputs[0].text()
-                    acidente.data_ocorrencia = datetime.strptime(inputs[1].text(), '%d-%m-%Y').date()
+                    acidente.data_ocorrencia = parse_data(inputs[1].text())
                     acidente.valor_acidente = float(inputs[2].text())
                     acidente.tipo_acidente = inputs[3].text()
                 else:
