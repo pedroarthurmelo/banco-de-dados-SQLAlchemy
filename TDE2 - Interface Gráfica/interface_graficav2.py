@@ -3,11 +3,11 @@ import bcrypt
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QVBoxLayout, 
     QWidget, QLabel, QDialog, QGridLayout, QLineEdit, 
-    QMessageBox, QTabWidget, QListWidget,
+    QMessageBox, QTabWidget, QListWidget, QCheckBox, QComboBox
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QRegExp
 from PyQt5 import QtGui, QtCore, QtWidgets
-from PyQt5.QtGui import QIcon
+from PyQt5.QtGui import QIcon, QValidator, QIntValidator, QRegExpValidator
 import sqlalchemy
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy import Column, Integer, String, ForeignKey, Float, Date
@@ -36,15 +36,16 @@ sessao = Sessao()
 class Cliente(Base):
     __tablename__ = 'cliente'
     id = Column(Integer, primary_key=True, unique=True, nullable=False, autoincrement=True)
-    cpf = Column(String(11), unique=True)
-    nome = Column(String(50))
+    cpf = Column(String(11), unique=True, nullable=False)
+    nome = Column(String(50), nullable=False)
     endereco = Column(String(100))
     telefone = Column(String(15))
     email = Column(String(50))
+    password_hash = Column(String(128), nullable=False)
     apolices = relationship("Apolice", back_populates="cliente")
 
     def __repr__(self):
-        return f"<Cliente(id={self.id}, nome={self.nome}, cpf={self.cpf}, telefone={self.telefone}, email={self.email})>"
+        return f"<Cliente(id={self.id}, nome={self.nome}, cpf={self.cpf})>"
 
 # Tabela Apólice
 class Apolice(Base):
@@ -89,31 +90,42 @@ class Acidente(Base):
     def __repr__(self):
         return f"<Acidente(id={self.id}, descricao={self.descricao}, data_ocorrencia={self.data_ocorrencia}, apartamento_id={self.fk_apartamento})>"
     
-class Usuario(Base):
-    __tablename__ = 'usuario'
+
+class Funcionario(Base):
+    __tablename__ = 'funcionario'
     id = Column(Integer, primary_key=True, unique=True, nullable=False, autoincrement=True)
-    username = Column(String(50), unique=True, nullable=False)
-    password_hash = Column(String(128), nullable=False) # Store the hash, not the plain text password
-    role = Column(String(20), nullable=False) #e.g., 'root', 'client', 'admin'
+    cpf = Column(String(11), unique=True, nullable=False)
+    nome = Column(String(50), nullable=False)
+    cargo = Column(String(50), nullable=False)
+    departamento = Column(String(50), nullable=False)
+    data_contratacao = Column(Date, nullable=False)
+    salario = Column(Float, nullable=False)
+    password_hash = Column(String(128), nullable=False)
 
     def __repr__(self):
-        return f"<Usuario(id={self.id}, username={self.username}, role={self.role})>"
-
-# Criando as tabelas no banco de dados (se já não existirem)
+        return f"<Funcionario(id={self.id}, nome={self.nome}, cpf={self.cpf})>"
+    
 Base.metadata.create_all(engine)
+
+class CPFValidator(QRegExpValidator):
+    def __init__(self):
+        super().__init__()
+        # Only allow 11 digits
+        regex = QRegExp('^[0-9]{0,11}$')
+        self.setRegExp(regex)
 
 class LoginDialog(QDialog):
     def __init__(self):
         super().__init__()
-        self.username = None
+        self.cpf = None
         self.role = None
         self.setWindowTitle("Login")
         layout = QGridLayout()
         self.register_dialog = None
 
-        layout.addWidget(QLabel("Username:"), 0, 0)
-        self.username_input = QLineEdit()
-        layout.addWidget(self.username_input, 0, 1)
+        layout.addWidget(QLabel("CPF:"), 0, 0)
+        self.cpf_input = QLineEdit()
+        layout.addWidget(self.cpf_input, 0, 1)
 
         layout.addWidget(QLabel("Password:"), 1, 0)
         self.password_input = QLineEdit()
@@ -128,21 +140,30 @@ class LoginDialog(QDialog):
         self.register_button.clicked.connect(self.show_registration)
         layout.addWidget(self.register_button, 3, 0, 1, 2)
 
-
         self.setLayout(layout)
         self.registration_dialog = None
 
     def login(self):
-        username = self.username_input.text()
+        cpf = self.cpf_input.text()
         password = self.password_input.text()
 
-        user = sessao.query(Usuario).filter_by(username=username).first()
-        if user and bcrypt.checkpw(password.encode('utf-8'), user.password_hash.encode('utf-8')):
-            self.username = username
-            self.role = user.role
+        # Try login as cliente
+        cliente = sessao.query(Cliente).filter_by(cpf=cpf).first()
+        if cliente and bcrypt.checkpw(password.encode('utf-8'), cliente.password_hash.encode('utf-8')):
+            self.cpf = cpf
+            self.role = "CLIENTE"
             self.accept()
-        else:
-            QMessageBox.warning(self, "Login Failed", "Incorrect username or password.")
+            return
+
+        # Try login as funcionario
+        funcionario = sessao.query(Funcionario).filter_by(cpf=cpf).first()
+        if funcionario and bcrypt.checkpw(password.encode('utf-8'), funcionario.password_hash.encode('utf-8')):
+            self.cpf = cpf
+            self.role = "FUNCIONÁRIO"
+            self.accept()
+            return
+
+        QMessageBox.warning(self, "Login Failed", "CPF ou senha incorretos.")
 
     def show_registration(self):
         if self.registration_dialog is None:
@@ -152,64 +173,146 @@ class LoginDialog(QDialog):
 class RegistrationDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Register New User")
-        layout = QGridLayout()
+        self.setWindowTitle("Registro de Novo Usuário")
+        self.layout = QGridLayout()
+        
+        # Role selection
+        self.layout.addWidget(QLabel("Tipo de Registro:"), 0, 0)
+        self.role_combo = QComboBox()
+        self.role_combo.addItems(["CLIENTE", "FUNCIONÁRIO"])
+        self.role_combo.currentTextChanged.connect(self.toggle_fields)
+        self.layout.addWidget(self.role_combo, 0, 1)
 
-        layout.addWidget(QLabel("Username:"), 0, 0)
-        self.username_input = QLineEdit()
-        layout.addWidget(self.username_input, 0, 1)
+        # Common fields
+        self.layout.addWidget(QLabel("CPF (apenas números):"), 1, 0)
+        self.cpf_input = QLineEdit()
+        self.cpf_input.setValidator(CPFValidator())
+        self.layout.addWidget(self.cpf_input, 1, 1)
 
-        layout.addWidget(QLabel("Password:"), 1, 0)
+        self.layout.addWidget(QLabel("Nome:"), 2, 0)
+        self.nome_input = QLineEdit()
+        self.layout.addWidget(self.nome_input, 2, 1)
+
+        self.layout.addWidget(QLabel("Senha:"), 3, 0)
         self.password_input = QLineEdit()
         self.password_input.setEchoMode(QLineEdit.Password)
-        layout.addWidget(self.password_input, 1, 1)
+        self.layout.addWidget(self.password_input, 3, 1)
 
-        layout.addWidget(QLabel("Confirm Password:"), 2, 0)
+        self.layout.addWidget(QLabel("Confirmar Senha:"), 4, 0)
         self.confirm_password_input = QLineEdit()
         self.confirm_password_input.setEchoMode(QLineEdit.Password)
-        layout.addWidget(self.confirm_password_input, 2, 1)
+        self.layout.addWidget(self.confirm_password_input, 4, 1)
 
-        layout.addWidget(QLabel("Role (FUNCIONÁRIO/CLIENTE):"), 3, 0)
-        self.role_input = QLineEdit()
-        layout.addWidget(self.role_input, 3, 1)
+        # Cliente specific fields
+        self.cliente_widgets = []
+        self.cliente_widgets.append((QLabel("Endereço:"), QLineEdit()))
+        self.cliente_widgets.append((QLabel("Telefone:"), QLineEdit()))
+        self.cliente_widgets.append((QLabel("Email:"), QLineEdit()))
 
+        # Funcionario specific fields
+        self.funcionario_widgets = []
+        self.funcionario_widgets.append((QLabel("Cargo:"), QLineEdit()))
+        self.funcionario_widgets.append((QLabel("Departamento:"), QLineEdit()))
+        self.funcionario_widgets.append((QLabel("Data Contratação (DD-MM-YYYY):"), QLineEdit()))
+        self.funcionario_widgets.append((QLabel("Salário:"), QLineEdit()))
 
-        self.register_button = QPushButton("Register")
+        # Add all widgets but hide funcionario ones initially
+        row = 5
+        for label, input_field in self.cliente_widgets + self.funcionario_widgets:
+            self.layout.addWidget(label, row, 0)
+            self.layout.addWidget(input_field, row, 1)
+            if (label, input_field) in self.funcionario_widgets:
+                label.hide()
+                input_field.hide()
+            row += 1
+
+        self.show_password_checkbox = QCheckBox("Mostrar Senha")
+        self.show_password_checkbox.stateChanged.connect(self.toggle_password_visibility)
+        self.layout.addWidget(self.show_password_checkbox, row, 0, 1, 2)
+
+        self.register_button = QPushButton("Registrar")
         self.register_button.clicked.connect(self.register)
-        layout.addWidget(self.register_button, 4, 0, 1, 2)
+        self.layout.addWidget(self.register_button, row + 1, 0, 1, 2)
 
-        self.setLayout(layout)
+        self.setLayout(self.layout)
+
+    def toggle_fields(self, role):
+        # Show/hide appropriate fields based on role
+        for label, input_field in self.cliente_widgets:
+            label.setVisible(role == "CLIENTE")
+            input_field.setVisible(role == "CLIENTE")
+            input_field.clear()
+
+        for label, input_field in self.funcionario_widgets:
+            label.setVisible(role == "FUNCIONÁRIO")
+            input_field.setVisible(role == "FUNCIONÁRIO")
+            input_field.clear()
+
+    def toggle_password_visibility(self, state):
+        mode = QLineEdit.Normal if state == Qt.Checked else QLineEdit.Password
+        self.password_input.setEchoMode(mode)
+        self.confirm_password_input.setEchoMode(mode)
 
     def register(self):
-        username = self.username_input.text()
+        # Validate common fields
+        cpf = self.cpf_input.text()
+        nome = self.nome_input.text()
         password = self.password_input.text()
         confirm_password = self.confirm_password_input.text()
-        role = self.role_input.text().upper()
-        if role not in ['FUNCIONÁRIO', 'CLIENTE']:
-            QMessageBox.warning(self, "Registration Error", "Role must be FUNCIONÁRIO or CLIENTE.")
+        role = self.role_combo.currentText()
+
+        if len(cpf) != 11 or not cpf.isdigit():
+            QMessageBox.warning(self, "Erro", "CPF deve conter exatamente 11 dígitos.")
             return
-        self.close()
-        if self.parent():
-            self.parent().show()
 
         if password != confirm_password:
-            QMessageBox.warning(self, "Registration Error", "Passwords do not match.")
+            QMessageBox.warning(self, "Erro", "As senhas não coincidem.")
             return
 
         hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
 
         try:
-            new_user = Usuario(username=username, password_hash=hashed_password.decode('utf-8'), role=role)
-            sessao.add(new_user)
+            if role == "CLIENTE":
+                cliente = Cliente(
+                    cpf=cpf,
+                    nome=nome,
+                    endereco=self.cliente_widgets[0][1].text(),
+                    telefone=self.cliente_widgets[1][1].text(),
+                    email=self.cliente_widgets[2][1].text(),
+                    password_hash=hashed_password.decode('utf-8')
+                )
+                sessao.add(cliente)
+            else:  # FUNCIONÁRIO
+                try:
+                    data_contratacao = datetime.strptime(
+                        self.funcionario_widgets[2][1].text(), '%d-%m-%Y'
+                    ).date()
+                    salario = float(self.funcionario_widgets[3][1].text())
+                except ValueError:
+                    QMessageBox.warning(self, "Erro", "Data ou salário inválido.")
+                    return
+
+                funcionario = Funcionario(
+                    cpf=cpf,
+                    nome=nome,
+                    cargo=self.funcionario_widgets[0][1].text(),
+                    departamento=self.funcionario_widgets[1][1].text(),
+                    data_contratacao=data_contratacao,
+                    salario=salario,
+                    password_hash=hashed_password.decode('utf-8')
+                )
+                sessao.add(funcionario)
+
             sessao.commit()
-            QMessageBox.information(self, "Registration Successful", "User registered successfully!")
+            QMessageBox.information(self, "Sucesso", "Registro realizado com sucesso!")
             self.accept()
+
         except IntegrityError:
             sessao.rollback()
-            QMessageBox.warning(self, "Registration Error", "Username already exists. Please choose a different username.")
+            QMessageBox.warning(self, "Erro", "CPF já cadastrado.")
         except Exception as e:
             sessao.rollback()
-            QMessageBox.warning(self, "Registration Error", f"An error occurred: {e}")
+            QMessageBox.warning(self, "Erro", f"Erro ao registrar: {str(e)}")
 
 class MainMenu(QMainWindow):
     def __init__(self, username=None, role=None):
@@ -218,6 +321,7 @@ class MainMenu(QMainWindow):
         self.setGeometry(720, 250, 500, 500)
         self.username = username
         self.role = role
+        self.cpf = username
 
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
@@ -287,22 +391,20 @@ class MainMenu(QMainWindow):
         self.user_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #000000;")
         layout.addWidget(self.user_label)
 
-        layout.addWidget(title_label)  # Adiciona o título ao layout
-        layout.addWidget(self.tabs)  # Adiciona as abas ao layout
+        layout.addWidget(title_label)  
+        layout.addWidget(self.tabs)  
         self.setCentralWidget(central_widget)
 
         logout_btn = QPushButton("Logout")
         logout_btn.clicked.connect(self.logout)
         layout.addWidget(logout_btn)
 
-        if self.role != "CLIENTE":
-        # Adicionar as abas na ordem desejada: Cliente, Apólice, Apartamento, Acidente
-            self.add_tab('Cliente', 'Cliente')
-            self.add_tab('Apólice', 'Apólice')
-            self.add_tab('Apartamento', 'Apartamento')
-            self.add_tab('Acidente', 'Acidente')
+        if self.role != "CLIENTE":  # Handles both "FUNCIONÁRIO" and other non-client roles
+            tabs_to_add = ['Cliente', 'Apólice', 'Apartamento', 'Acidente']
+            for tab_title in tabs_to_add:
+                self.add_tab(tab_title, tab_title)
 
-        if self.role == 'CLIENTE':
+        elif self.role == 'CLIENTE': # Separate handling for client roles
             self.customize_client_view()
 
     def customize_client_view(self):
@@ -316,7 +418,7 @@ class MainMenu(QMainWindow):
         self.add_client_specific_tabs()
 
     def add_client_specific_tabs(self):
-            # Add a tab for personal data
+    
             personal_tab = QWidget()
             personal_layout = QVBoxLayout()
             
@@ -340,8 +442,7 @@ class MainMenu(QMainWindow):
             self.tabs.addTab(personal_tab, 'Área do Cliente')
 
     def view_personal_data(self):
-    # Retrieve and display personal data for the logged-in client
-        cliente = sessao.query(Cliente).filter_by(cpf=self.get_client_cpf()).first()
+        cliente = sessao.query(Cliente).filter_by(cpf=self.cpf).first()
         if cliente:
             data = f"""
             Dados Pessoais:
@@ -352,14 +453,11 @@ class MainMenu(QMainWindow):
             Email: {cliente.email}
             """
             QMessageBox.information(self, 'Dados Pessoais', data)
+        else:
+            QMessageBox.warning(self, 'Erro', 'Não foi possível encontrar seus dados pessoais.')
 
     def get_client_cpf(self):
-    # Retrieve CPF for the logged-in user
-        usuario = sessao.query(Usuario).filter_by(username=self.username).first()
-        if usuario:
-            cliente = sessao.query(Cliente).filter_by(cpf=usuario.username).first()
-            return cliente.cpf if cliente else None
-        return None
+        return self.cpf if self.role == "CLIENTE" else None
     
     def get_registros(self, tipo):
         if self.role == 'CLIENTE':
@@ -373,7 +471,7 @@ class MainMenu(QMainWindow):
             elif tipo == 'Acidente':
                 return sessao.query(Acidente).join(Apartamento).join(Apolice).join(Cliente).filter(Cliente.cpf == cpf).all()
         else:
-            # FUNCIONÁRIO gets full access
+            
             return super().get_registros(tipo)
 
 
@@ -381,22 +479,19 @@ class MainMenu(QMainWindow):
         tab = QWidget()
         layout = QVBoxLayout()
 
-        # Adicionando botões diretamente na aba
-        add_btn = QPushButton(f'Adicionar {tipo}')
-        read_btn = QPushButton(f'Ler {tipo}')
-        update_btn = QPushButton(f'Atualizar {tipo}')
-        delete_btn = QPushButton(f'Deletar {tipo}')
+        if tipo == 'Cliente' and self.role != "CLIENTE":
+            actions = ['Ler', 'Atualizar', 'Deletar']
+        else:
+            actions = ['Adicionar', 'Ler', 'Atualizar', 'Deletar']
 
-        layout.addWidget(add_btn)
-        layout.addWidget(read_btn)
-        layout.addWidget(update_btn)
-        layout.addWidget(delete_btn)
+        for action in actions:
+            btn = QPushButton(f'{action} {tipo}')
+            btn.clicked.connect(lambda checked, a=action, t=tipo: self.form_dialog(t, a))
+            layout.addWidget(btn)
 
-        # Funções para cada botão
-        add_btn.clicked.connect(lambda: self.form_dialog(tipo, 'Adicionar'))
-        read_btn.clicked.connect(lambda: self.form_dialog(tipo, 'Ler'))
-        update_btn.clicked.connect(lambda: self.form_dialog(tipo, 'Atualizar'))
-        delete_btn.clicked.connect(lambda: self.form_dialog(tipo, 'Deletar'))
+        tab.setLayout(layout) # Set the layout with the correctly created buttons
+        self.tabs.addTab(tab, title)
+        
 
         tab.setLayout(layout)
         self.tabs.addTab(tab, title)
@@ -406,7 +501,7 @@ class MainMenu(QMainWindow):
         dialog.setWindowTitle(f'{operacao} {tipo}')
         dialog.resize(600, 600)
         layout = QGridLayout()
-        campos = [] # Declare campos here
+        campos = [] 
 
         if self.role == "client" and operacao in ['Adicionar', 'Atualizar', 'Deletar']:
             if tipo not in ['Cliente', 'Apólice']:
@@ -513,9 +608,9 @@ class MainMenu(QMainWindow):
         elif tipo == 'Apólice':
             campos = ['Data do Contrato (DD-MM-YYYY)', 'Contato', 'Assinatura']
         elif tipo == 'Apartamento':
-            campos = ['Endereço', 'Andar', 'Tipo de Apartamento (Padrão,Kitnet,Cobertura,Duplex,Triplex,Flat)', 'Número do Apartamento']
+            campos = ['Endereço', 'Andar', 'Tipo de Apartamento (Padrão,Kitnet,Cobertura,Duplex,Triplex,Flat)', 'Número do Apartamento'] # Add ID da Apólice
         elif tipo == 'Acidente':
-            campos = ['Descrição', 'Data da Ocorrência (DD-MM-YYYY)', 'Valor do Acidente', 'Tipo de Acidente']
+            campos = ['Descrição', 'Data da Ocorrência (DD-MM-YYYY)', 'Valor do Acidente', 'Tipo de Acidente'] # Add ID do Apartamento
 
         for i, campo in enumerate(campos):
             layout.addWidget(QLabel(campo), start_row + i, 0)
@@ -769,14 +864,17 @@ class MainMenu(QMainWindow):
             print(f"Erro geral ao deletar {tipo}: {e}")
 
     def get_registros(self, tipo):
-        if self.role == "client" and tipo == 'Cliente':
-            cpf = self.get_client_cpf()  #Implement get_client_cpf method.
-            return sessao.query(Cliente).filter(Cliente.cpf == cpf).all()
-        elif self.role == "client" and tipo in ['Apólice', 'Apartamento', 'Acidente']:
+        if self.role == 'CLIENTE':
             cpf = self.get_client_cpf()
-            # Join tables to retrieve related data for the client based on their CPF.
-            return self.get_client_data(cpf, tipo)
-        try:
+            if tipo == 'Cliente':
+                return sessao.query(Cliente).filter(Cliente.cpf == cpf).all()
+            elif tipo == 'Apólice':
+                return sessao.query(Apolice).join(Cliente).filter(Cliente.cpf == cpf).all()
+            elif tipo == 'Apartamento':
+                return sessao.query(Apartamento).join(Apolice).join(Cliente).filter(Cliente.cpf == cpf).all()
+            elif tipo == 'Acidente':
+                return sessao.query(Acidente).join(Apartamento).join(Apolice).join(Cliente).filter(Cliente.cpf == cpf).all()
+        else:
             if tipo == 'Cliente':
                 return sessao.query(Cliente).all()
             elif tipo == 'Apólice':
@@ -785,16 +883,13 @@ class MainMenu(QMainWindow):
                 return sessao.query(Apartamento).all()
             elif tipo == 'Acidente':
                 return sessao.query(Acidente).all()
-        except Exception as e:
-            QMessageBox.warning(self, 'Erro', f'Erro ao obter registros de {tipo}: {e}')
-            print(f"Erro ao obter registros de {tipo}: {e}")
-            return []
-        else:
-            #Root user gets all data
-            return super().get_registros(tipo)
+            else:
+                return []
+
         
     def get_client_cpf(self):
-        return "123456789"
+        return self.cpf if self.role == "CLIENTE" else None
+
     
     def get_client_data(self,cpf,tipo):
         if tipo == 'Apólice':
@@ -807,20 +902,23 @@ class MainMenu(QMainWindow):
             return []
         
     def logout(self):
-        self.close()
+        self.close() # Close the main window
         login_dialog = LoginDialog()
         if login_dialog.exec_() == QDialog.Accepted:
-            main_window = MainMenu(login_dialog.username)
-            main_window.role = login_dialog.role if hasattr(login_dialog, 'role') else "root"
-            main_window.show()
+            main_menu = MainMenu(login_dialog.cpf, login_dialog.role)
+            main_menu.show()
+        else:
+            sys.exit(0)
         
 
-if __name__ == '__main__':
+def main():
     app = QApplication(sys.argv)
     login_dialog = LoginDialog()
     
     if login_dialog.exec_() == QDialog.Accepted:
-        main_window = MainMenu(login_dialog.username, login_dialog.role)
-        main_window.role = login_dialog.role
+        main_window = MainMenu(login_dialog.cpf, login_dialog.role)
         main_window.show()
-    sys.exit(app.exec_())
+        sys.exit(app.exec_())
+
+if __name__ == '__main__':
+    main()
