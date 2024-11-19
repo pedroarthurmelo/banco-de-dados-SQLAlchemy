@@ -10,7 +10,7 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 from PyQt5.QtGui import QIcon, QValidator, QIntValidator, QRegExpValidator
 import sqlalchemy
 from sqlalchemy.orm import declarative_base, sessionmaker
-from sqlalchemy import Column, Integer, String, ForeignKey, Float, Date
+from sqlalchemy import Column, Integer, String, ForeignKey, Float, Date, create_engine, text
 from sqlalchemy.orm import relationship
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime
@@ -32,8 +32,44 @@ HOST = 'localhost'
 PORTA = '3306'
 BANCO_DE_DADOS = 'seguradora'
 
+
 # Criar engine do SQLAlchemy
-engine = sqlalchemy.create_engine(f'mysql+pymysql://{USUARIO}:{SENHA}@{HOST}:{PORTA}/{BANCO_DE_DADOS}')
+url_sem_banco = f'mysql+pymysql://{USUARIO}:{SENHA}@{HOST}:{PORTA}'
+engine_sem_banco = create_engine(url_sem_banco, echo=False)
+
+def banco_existe(nome_do_banco):
+    """Verifica se o banco de dados já existe."""
+    query = f"SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = '{nome_do_banco}'"
+    with engine_sem_banco.connect() as conexao:
+        resultado = conexao.execute(text(query)).fetchone()
+    return resultado is not None
+
+
+def criar_banco_de_dados(nome_do_banco):
+    """Cria o banco de dados se não existir."""
+    with engine_sem_banco.connect() as conexao:
+        conexao.execute(text(f"CREATE DATABASE {nome_do_banco}"))
+        print(f"Banco de dados '{nome_do_banco}' criado.")
+
+if not banco_existe(BANCO_DE_DADOS):  # Check if the database exists before proceeding
+    while True:
+        print(f"O banco de dados '{BANCO_DE_DADOS}' não existe. Deseja criá-lo?")
+        opcao = input("1. Sim\n2. Não\nEscolha uma opção: ")
+
+        if opcao == '1':
+            criar_banco_de_dados(BANCO_DE_DADOS)
+            break
+        elif opcao == '2':
+            print("Programa encerrado.")
+            exit()
+        else:
+            print("Opção inválida. Por favor, escolha 1 ou 2.")
+else:
+    print(f"O banco de dados '{BANCO_DE_DADOS}' já existe.")
+
+
+url_com_banco = f'mysql+pymysql://{USUARIO}:{SENHA}@{HOST}:{PORTA}/{BANCO_DE_DADOS}'
+engine = create_engine(url_com_banco, echo=False)
 
 # Definindo a base para as tabelas
 Base = declarative_base()
